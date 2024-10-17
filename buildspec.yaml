@@ -1,0 +1,32 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - nohup /usr/local/bin/dockerd-entrypoint.sh &  # Start Docker daemon
+      - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 754082843677.dkr.ecr.us-east-1.amazonaws.com
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t docker-node-js-ecr .
+      - docker tag docker-node-js-ecr:latest 754082843677.dkr.ecr.us-east-1.amazonaws.com/docker-node-js-ecr:latest
+      - docker tag docker-node-js-ecr:latest 754082843677.dkr.ecr.us-east-1.amazonaws.com/docker-node-js-ecr:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push 754082843677.dkr.ecr.us-east-1.amazonaws.com/docker-node-js-ecr:latest
+      - docker push 754082843677.dkr.ecr.us-east-1.amazonaws.com/docker-node-js-ecr:$IMAGE_TAG
+      - echo Writing imagedefinitions.json...
+      - printf '[{"name":"docker-node-js-ecr","imageUri":"%s"}]' 754082843677.dkr.ecr.us-east-1.amazonaws.com/docker-node-js-ecr:$IMAGE_TAG > imagedefinitions.json
+      - echo printing imagedefinitions.json
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
